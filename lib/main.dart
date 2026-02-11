@@ -22,23 +22,23 @@ class SafeProtocolHome extends StatefulWidget {
 }
 
 class _SafeProtocolHomeState extends State<SafeProtocolHome> {
-  // --- STATE VARIABLES ---
-  String userName = "User ${Random().nextInt(1000)}";
+  final String userName = "Unit ${Random().nextInt(99)}";
   final Strategy strategy = Strategy.P2P_STAR;
-  Map<String, ConnectionInfo> endpointMap = {};
 
-  // Location & Markers
+  Map<String, ConnectionInfo> endpointMap = {};
   LatLng? _currentLocation;
-  List<Marker> _remoteMarkers = []; // Stores Red Siren markers from others
+  List<Marker> _markers = [];
+  List<CircleMarker> _circles = [];
+
+  // FIXED: Use ValueNotifier so chat updates instantly without keyboard
+  final ValueNotifier<List<Map<String, String>>> _chatNotifier = ValueNotifier([]);
+  final TextEditingController _msgController = TextEditingController();
+
   final MapController _mapController = MapController();
 
-  // Emergency Data
+  // App State
   bool _isSOSActive = false;
-  Map<String, dynamic>? _myEmergencyData; // Stores my current SOS info
-
-  // Chat & Logs
-  List<Map<String, String>> _chatHistory = [];
-  final TextEditingController _msgController = TextEditingController();
+  bool _isScanning = false;
 
   @override
   void initState() {
@@ -46,7 +46,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
     _initialSetup();
   }
 
-  // --- 1. PERMISSIONS & LOCATION ---
   Future<void> _initialSetup() async {
     await [
       Permission.location,
@@ -56,42 +55,85 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
       Permission.bluetoothScan,
       Permission.nearbyWifiDevices,
     ].request();
-
     _getCurrentLocation();
   }
 
   Future<void> _getCurrentLocation() async {
     try {
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
+        _updateMyMarker();
       });
-      // Only move map on first load
-      if (_remoteMarkers.isEmpty) {
+      if (_markers.length <= 1) {
         _mapController.move(_currentLocation!, 15.0);
       }
     } catch (e) {
-      print("Error getting location: $e");
+      debugPrint("GPS Error: $e");
     }
   }
 
-  // --- 2. SOS INPUT DIALOG ---
-  void _showSOSDialog() {
+  void _updateMyMarker() {
+    if (_currentLocation == null) return;
+    _markers.removeWhere((m) => m.key == const Key("me"));
+    _markers.add(
+      Marker(
+        key: const Key("me"),
+        point: _currentLocation!,
+        width: 80,
+        height: 80,
+        child: _buildCustomMarker(
+          icon: _isSOSActive ? Icons.warning_amber_rounded : Icons.navigation,
+          color: _isSOSActive ? Colors.red : Colors.blue,
+          label: "YOU",
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomMarker({required IconData icon, required Color color, String? label}) {
+    return Column(
+      children: [
+        if (label != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+              boxShadow: [const BoxShadow(blurRadius: 4, color: Colors.black26)],
+            ),
+            child: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [const BoxShadow(blurRadius: 6, color: Colors.black38)],
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ],
+    );
+  }
+
+  // --- EMERGENCY INPUT DIALOG ---
+  void _showEmergencyInput() {
     String selectedType = "Medical";
     String selectedSeverity = "High";
 
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
+      builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Row(children: [Icon(Icons.warning, color: Colors.red), SizedBox(width: 10), Text("DECLARE EMERGENCY")]),
+          title: const Row(children: [Icon(Icons.report_problem, color: Colors.red), SizedBox(width: 10), Text("Emergency Details")]),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Describe your situation to broadcast to rescuers."),
-              const SizedBox(height: 20),
+              const Text("Emergency Type:", style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButton<String>(
                 value: selectedType,
                 isExpanded: true,
@@ -99,33 +141,32 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
                     .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setDialogState(() => selectedType = v!),
               ),
-              const SizedBox(height: 10),
-              const Text("Severity Level:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 15),
+              const Text("Severity:", style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 5),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: ["Low", "High", "Critical"].map((level) {
                   return ChoiceChip(
                     label: Text(level),
                     selected: selectedSeverity == level,
                     selectedColor: Colors.red[100],
+                    labelStyle: TextStyle(color: selectedSeverity == level ? Colors.red[900] : Colors.black),
                     onSelected: (b) => setDialogState(() => selectedSeverity = level),
                   );
                 }).toList(),
-              )
+              ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx), // Cancel
-              child: const Text("Cancel"),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
               onPressed: () {
-                Navigator.pop(ctx);
-                _activateSOS(selectedType, selectedSeverity);
+                Navigator.pop(context);
+                _startAdvertising(type: selectedType, severity: selectedSeverity);
               },
-              child: const Text("BROADCAST SOS", style: TextStyle(color: Colors.white)),
+              child: const Text("BROADCAST SOS"),
             )
           ],
         ),
@@ -133,172 +174,202 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
     );
   }
 
-  // --- 3. MESH NETWORK LOGIC ---
+  // --- MESH LOGIC ---
 
-  void _activateSOS(String type, String severity) async {
-    // 1. Prepare Emergency Payload
-    _myEmergencyData = {
-      "header": "SOS_ALERT", // Unique header to identify this packet
-      "sender": userName,
-      "type": type,
-      "severity": severity,
-      "lat": _currentLocation?.latitude ?? 0.0,
-      "lng": _currentLocation?.longitude ?? 0.0,
-      "timestamp": DateTime.now().toString(),
-    };
+  void _handleEmergencyButton() {
+    if (_isSOSActive) {
+      _stopAll(); // Cancel SOS
+    } else {
+      _showEmergencyInput(); // Ask for details first
+    }
+  }
 
-    // 2. Start Advertising
+  void _handleViewAlerts() {
+    if (_isScanning) {
+      _stopAll();
+    } else {
+      _startDiscovery();
+    }
+  }
+
+  void _stopAll() async {
+    await Nearby().stopAdvertising();
+    await Nearby().stopDiscovery();
+    setState(() {
+      _isSOSActive = false;
+      _isScanning = false;
+      _updateMyMarker();
+    });
+  }
+
+  void _startAdvertising({required String type, required String severity}) async {
     try {
-      setState(() => _isSOSActive = true);
+      await Nearby().stopDiscovery();
+      setState(() {
+        _isSOSActive = true;
+        _updateMyMarker();
+        if (_currentLocation != null) {
+          _circles.add(CircleMarker(point: _currentLocation!, color: Colors.red.withOpacity(0.3), borderStrokeWidth: 2, borderColor: Colors.red, radius: 100, useRadiusInMeter: true));
+        }
+      });
+
+      // Store emergency data to send on connection
+      var emergencyPayload = jsonEncode({
+        "type": "SOS_ALERT",
+        "lat": _currentLocation?.latitude ?? 0.0,
+        "lng": _currentLocation?.longitude ?? 0.0,
+        "e_type": type,
+        "severity": severity
+      });
+
       await Nearby().startAdvertising(
         userName,
         strategy,
-        onConnectionInitiated: _onConnectionInit,
-        onConnectionResult: (id, status) => _addSystemMessage("SOS Status: $status"),
+        onConnectionInitiated: (id, info) => _onConnectionInit(id, info, initialPayload: emergencyPayload),
+        onConnectionResult: (id, status) => debugPrint("Status: $status"),
         onDisconnected: (id) => setState(() => endpointMap.remove(id)),
         serviceId: "com.example.safe",
       );
-      _addSystemMessage("SOS ACTIVE: Broadcasting $type ($severity)");
     } catch (e) {
-      _addSystemMessage("Error Advertising: $e");
-      setState(() => _isSOSActive = false);
+      debugPrint("Error: $e");
     }
   }
 
   void _startDiscovery() async {
     try {
+      await Nearby().stopAdvertising();
+      setState(() {
+        _isScanning = true;
+      });
       await Nearby().startDiscovery(
         userName,
         strategy,
         onEndpointFound: (id, name, serviceId) {
-          _addSystemMessage("Signal Found: $name");
           Nearby().requestConnection(
             userName,
             id,
-            onConnectionInitiated: _onConnectionInit,
-            onConnectionResult: (id, status) => _addSystemMessage("Connection: $status"),
+            onConnectionInitiated: (id, info) => _onConnectionInit(id, info),
+            onConnectionResult: (id, status) => debugPrint("Status: $status"),
             onDisconnected: (id) => setState(() => endpointMap.remove(id)),
           );
         },
-        onEndpointLost: (id) => _addSystemMessage("Lost signal: $id"),
+        onEndpointLost: (id) => debugPrint("Lost: $id"),
         serviceId: "com.example.safe",
       );
-      _addSystemMessage("Scanning for SOS signals...");
     } catch (e) {
-      _addSystemMessage("Error Discovering: $e");
+      debugPrint("Error: $e");
     }
   }
 
-  void _onConnectionInit(String id, ConnectionInfo info) {
-    _addSystemMessage("Handshake with ${info.endpointName}...");
-
+  void _onConnectionInit(String id, ConnectionInfo info, {String? initialPayload}) {
     Nearby().acceptConnection(
       id,
       onPayLoadRecieved: (endId, payload) {
         if (payload.type == PayloadType.BYTES) {
           String str = utf8.decode(payload.bytes!);
-
-          // CHECK: Is this a JSON SOS packet or a Chat message?
-          try {
-            if (str.contains("SOS_ALERT")) {
-              var data = jsonDecode(str);
-              _handleSOSPacket(data);
-            } else {
-              // Normal chat message
-              setState(() {
-                _chatHistory.add({"sender": endpointMap[endId]?.endpointName ?? "Unknown", "message": str});
-              });
-            }
-          } catch (e) {
-            // Fallback for plain text
-            setState(() {
-              _chatHistory.add({"sender": endpointMap[endId]?.endpointName ?? "Unknown", "message": str});
-            });
+          if (str.contains("SOS_ALERT")) {
+            var data = jsonDecode(str);
+            _addAlertMarker(data['lat'], data['lng'], data['e_type'], data['severity']);
+          } else {
+            // Chat Message: Update the Notifier, not just SetState
+            final currentChats = List<Map<String, String>>.from(_chatNotifier.value);
+            currentChats.add({"sender": endpointMap[endId]?.endpointName ?? "Unknown", "message": str});
+            _chatNotifier.value = currentChats;
           }
         }
       },
     );
+    setState(() => endpointMap[id] = info);
 
-    // If I am the SOS sender, AUTO-SEND my emergency data immediately upon connection
-    if (_isSOSActive && _myEmergencyData != null) {
-      String jsonPayload = jsonEncode(_myEmergencyData);
-      Nearby().sendBytesPayload(id, utf8.encode(jsonPayload));
-      _addSystemMessage("Sent Emergency Coordinates to Rescuer");
+    // Auto-send emergency payload if I am the Host
+    if (initialPayload != null) {
+      Nearby().sendBytesPayload(id, utf8.encode(initialPayload));
     }
-
-    setState(() {
-      endpointMap[id] = info;
-    });
   }
 
-  // --- 4. HANDLE RECEIVED SOS DATA ---
-  void _handleSOSPacket(Map<String, dynamic> data) {
-    double lat = data['lat'];
-    double lng = data['lng'];
-    String type = data['type'];
-    String severity = data['severity'];
-
-    _addSystemMessage("!!! ALERT RECEIVED: $type ($severity) !!!");
-
-    // Add Red Siren Marker
+  void _addAlertMarker(double lat, double lng, String type, String severity) {
     setState(() {
-      _remoteMarkers.add(
-        Marker(
-          point: LatLng(lat, lng),
-          width: 80,
-          height: 80,
-          child: Column(
-            children: [
-              // Blinking or static siren icon
-              const Icon(Icons.warning_rounded, color: Colors.red, size: 40),
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4)),
-                child: Text("$type\n$severity",
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red),
-                  textAlign: TextAlign.center,
-                ),
-              )
-            ],
-          ),
-        ),
+      _markers.add(
+          Marker(
+            point: LatLng(lat, lng),
+            width: 80, height: 80,
+            child: _buildCustomMarker(icon: Icons.notification_important, color: Colors.red, label: "$type\n$severity"),
+          )
       );
-
-      // Auto-move map to the emergency
-      _mapController.move(LatLng(lat, lng), 16.0);
+      _circles.add(CircleMarker(point: LatLng(lat, lng), color: Colors.orange.withOpacity(0.3), borderStrokeWidth: 2, borderColor: Colors.orange, radius: 100, useRadiusInMeter: true));
     });
   }
 
-  // --- 5. CHAT LOGIC ---
+  // --- CHAT LOGIC ---
   void _sendMessage(String message) {
     if (message.isEmpty) return;
     endpointMap.forEach((key, value) {
       Nearby().sendBytesPayload(key, utf8.encode(message));
     });
-    setState(() {
-      _chatHistory.add({"sender": "Me", "message": message});
-      _msgController.clear();
-    });
+
+    // Update Notifier
+    final currentChats = List<Map<String, String>>.from(_chatNotifier.value);
+    currentChats.add({"sender": "Me", "message": message});
+    _chatNotifier.value = currentChats;
+
+    _msgController.clear();
   }
 
-  void _addSystemMessage(String msg) {
-    setState(() {
-      _chatHistory.add({"sender": "System", "message": msg});
-    });
+  void _openChatBox() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        child: Column(
+          children: [
+            Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: const BorderRadius.vertical(top: Radius.circular(20))), child: Row(children: [const Icon(Icons.chat, color: Colors.white), const SizedBox(width: 10), Text("Mesh Chat (${endpointMap.length})", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))])),
+
+            // FIXED: Using ValueListenableBuilder to update UI instantly
+            Expanded(
+              child: ValueListenableBuilder<List<Map<String, String>>>(
+                valueListenable: _chatNotifier,
+                builder: (context, chatHistory, child) {
+                  return ListView.builder(
+                    itemCount: chatHistory.length,
+                    itemBuilder: (ctx, i) => ListTile(
+                      title: Align(
+                        alignment: chatHistory[i]['sender'] == "Me" ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: chatHistory[i]['sender'] == "Me" ? Colors.blue[100] : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+                          child: Text(chatHistory[i]['message']!),
+                        ),
+                      ),
+                      subtitle: Text(chatHistory[i]['sender']!, textAlign: chatHistory[i]['sender'] == "Me" ? TextAlign.right : TextAlign.left, style: const TextStyle(fontSize: 10)),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 10, left: 10, right: 10),
+              child: Row(
+                children: [
+                  Expanded(child: TextField(controller: _msgController, decoration: const InputDecoration(hintText: "Message..."))),
+                  IconButton(icon: const Icon(Icons.send), onPressed: () => _sendMessage(_msgController.text))
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
   }
 
-  // --- 6. UI BUILD ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Safe Protocol"),
-        backgroundColor: _isSOSActive ? Colors.red[900] : Colors.blue[900],
-        foregroundColor: Colors.white,
-      ),
       body: Stack(
         children: [
-          // MAP LAYER
+          // 1. MAP LAYER
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -310,155 +381,84 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.safe',
               ),
-              // LAYER 1: Current User (BLUE)
-              if (_currentLocation != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _currentLocation!,
-                      width: 80,
-                      height: 80,
-                      child: Column(
-                        children: [
-                          Icon(Icons.my_location, color: Colors.blue[700], size: 40),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            color: Colors.white.withOpacity(0.7),
-                            child: const Text("Me", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          )
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-              // LAYER 2: Remote SOS Signals (RED SIREN)
-              MarkerLayer(markers: _remoteMarkers),
+              CircleLayer(circles: _circles),
+              MarkerLayer(markers: _markers),
             ],
           ),
 
-          // CONTROL PANEL
+          // 2. GRADIENT OVERLAY
           Positioned(
-            bottom: 20,
-            left: 20,
-            right: 20,
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // SOS BUTTON
-                    ElevatedButton.icon(
-                      onPressed: _isSOSActive ? null : _showSOSDialog, // Open Input Dialog
-                      icon: _isSOSActive
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.wifi_tethering),
-                      label: Text(_isSOSActive ? "Broadcasting..." : "SOS"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      ),
-                    ),
-                    // SCAN BUTTON
-                    ElevatedButton.icon(
-                      onPressed: _startDiscovery,
-                      icon: const Icon(Icons.search),
-                      label: const Text("Scan for Help"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      ),
-                    ),
-                  ],
+            bottom: 0, left: 0, right: 0, height: 300,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black.withOpacity(0.9), Colors.transparent],
+                  stops: const [0.0, 1.0],
                 ),
               ),
             ),
           ),
 
-          // CHAT TOGGLE (Top Right)
+          // 3. CHAT BUTTON
           Positioned(
-            top: 20,
-            right: 20,
-            child: FloatingActionButton.small(
+            top: 50, right: 20,
+            child: FloatingActionButton(
               onPressed: _openChatBox,
-              backgroundColor: Colors.blue[800],
-              child: const Icon(Icons.chat, color: Colors.white),
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.chat_bubble_outline, color: Colors.blue),
             ),
-          )
-        ],
-      ),
-    );
-  }
+          ),
 
-  // --- REUSED CHAT UI (Same as before) ---
-  void _openChatBox() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.75,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.blue[800], borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Mesh Chat (${endpointMap.length} Connected)", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context))
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _chatHistory.length,
-                itemBuilder: (context, index) {
-                  final chat = _chatHistory[index];
-                  bool isMe = chat['sender'] == "Me";
-                  bool isSys = chat['sender'] == "System";
-                  if (isSys) return Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(chat['message']!, style: const TextStyle(fontSize: 10, color: Colors.grey))));
-                  return Align(
-                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: isMe ? Colors.blue[100] : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if(!isMe) Text(chat['sender']!, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                          Text(chat['message']!)
-                        ],
+          // 4. BOTTOM CONTROLS
+          Positioned(
+            bottom: 30, left: 20, right: 20,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: _handleEmergencyButton,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD30000),
+                      foregroundColor: Colors.white,
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: _isSOSActive
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.warning_amber_rounded, size: 28),
+                    label: Text(_isSOSActive ? "CANCEL SOS" : "REPORT EMERGENCY", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: _handleViewAlerts,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE65100),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.sensors),
+                          label: const Text("VIEW ALERTS", style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
                       ),
                     ),
-                  );
-                },
-              ),
+                    // SETTINGS BUTTON REMOVED as requested
+                  ],
+                ),
+              ],
             ),
-            Padding(
-              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 16, left: 16, right: 16, top: 8),
-              child: Row(
-                children: [
-                  Expanded(child: TextField(controller: _msgController, decoration: InputDecoration(hintText: "Type...", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(30))))),
-                  const SizedBox(width: 8),
-                  CircleAvatar(backgroundColor: Colors.blue[800], child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: () => _sendMessage(_msgController.text))),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
