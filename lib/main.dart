@@ -7,7 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart'; // ADDED for calls
+import 'package:url_launcher/url_launcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -75,7 +75,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Slate 900
+      backgroundColor: const Color(0xFF0F172A),
       appBar: AppBar(title: const Text("Setup Profile"), backgroundColor: const Color(0xFF1E293B), foregroundColor: Colors.white),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
@@ -150,191 +150,134 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// --- SETTINGS PAGE (NEW) ---
-class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+// --- NAVIGATION MENU DRAWER ---
+class NavDrawer extends StatelessWidget {
+  final String currentScreen;
+  final Function(String) onNavigate;
+  final VoidCallback onLogout;
+  final String userName; // ADDED: Variable to hold user name
 
-  @override
-  State<SettingsPage> createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<SettingsPage> {
-  bool _offlineMode = true;
-  bool _notifications = true;
-  String _language = "English";
-
-  final List<Map<String, String>> _contacts = [
-    {"name": "Emergency Hotline", "number": "112"},
-    {"name": "Disaster Management", "number": "108"},
-    {"name": "Medical Emergency", "number": "102"},
-  ];
-
-  void _makeCall(String number) async {
-    final Uri launchUri = Uri(scheme: 'tel', path: number);
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    }
-  }
+  const NavDrawer({
+    super.key,
+    required this.currentScreen,
+    required this.onNavigate,
+    required this.onLogout,
+    required this.userName, // ADDED
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Slate 900
-      appBar: AppBar(
-        title: const Text("SETTINGS", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-        backgroundColor: const Color(0xFF1E293B), // Slate 800
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+    return Drawer(
+      backgroundColor: const Color(0xFF0F172A),
+      child: Column(
         children: [
-          // 1. Offline Mode Card
-          _buildCard(
-            child: SwitchListTile(
-              title: const Text("Offline Mode", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: const Text("Peer-to-peer communication", style: TextStyle(color: Colors.grey, fontSize: 12)),
-              secondary: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.orange[600], borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.wifi_tethering, color: Colors.white),
-              ),
-              value: _offlineMode,
-              activeColor: Colors.orange,
-              onChanged: (val) => setState(() => _offlineMode = val),
+          // Header
+          Container(
+            padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFF334155))),
             ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // 2. Notifications Card
-          _buildCard(
-            child: SwitchListTile(
-              title: const Text("Emergency Alerts", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              subtitle: const Text("Receive notifications", style: TextStyle(color: Colors.grey, fontSize: 12)),
-              secondary: const Icon(Icons.notifications, color: Colors.orange),
-              value: _notifications,
-              activeColor: Colors.orange,
-              onChanged: (val) => setState(() => _notifications = val),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // 3. Emergency Contacts
-          _buildCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.phone, color: Colors.orange),
-                      SizedBox(width: 10),
-                      Text("Emergency Contacts", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("SAFE", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                        Text("Rescuer Panel", style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () => Navigator.pop(context),
+                    )
+                  ],
                 ),
-                ..._contacts.map((c) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                const SizedBox(height: 15),
+                Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[800]!)),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF020617),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF334155)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const Text("Logged in as", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                      // CHANGED: Displays dynamic user name
+                      Text(userName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 5),
+                      Row(
                         children: [
-                          Text(c['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          const Text("Tap to call", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                          Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
+                          const SizedBox(width: 8),
+                          const Text("Active", style: TextStyle(color: Colors.green, fontSize: 12)),
                         ],
-                      ),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                        onPressed: () => _makeCall(c['number']!),
-                        child: Text(c['number']!),
                       )
                     ],
                   ),
-                )),
-                const SizedBox(height: 16),
+                )
               ],
             ),
           ),
 
-          const SizedBox(height: 16),
-
-          // 4. Language
-          _buildCard(
-            child: ListTile(
-              leading: const Icon(Icons.language, color: Colors.orange),
-              title: const Text("Language", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              trailing: DropdownButton<String>(
-                value: _language,
-                dropdownColor: const Color(0xFF1E293B),
-                style: const TextStyle(color: Colors.white),
-                underline: Container(),
-                icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-                items: ["English", "Hindi", "Spanish", "French"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => _language = v!),
-              ),
+          // Navigation Items
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildNavItem("dashboard", "Dashboard", Icons.home),
+                _buildNavItem("reports", "Report Log", Icons.radio),
+                _buildNavItem("chat", "Chat System", Icons.chat),
+                _buildNavItem("analytics", "Analytics", Icons.bar_chart),
+                _buildNavItem("activity", "Activity Log", Icons.description),
+              ],
             ),
           ),
 
-          const SizedBox(height: 16),
-
-          // 5. About
-          _buildCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.shield, color: Colors.orange),
-                      SizedBox(width: 10),
-                      Text("About SAFE", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "SAFE (Secure Alerts For Emergencies) is an offline disaster management system designed for use during natural disasters.",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 15),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.wifi_off, color: Colors.orange, size: 16),
-                        SizedBox(width: 8),
-                        Text("Peer-to-Peer (No Internet)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ],
-                    ),
-                  )
-                ],
-              ),
+          // Footer
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0xFF334155))),
             ),
-          ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.logout, color: Colors.redAccent),
+                  title: const Text("Logout", style: TextStyle(color: Colors.redAccent)),
+                  onTap: onLogout,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  hoverColor: Colors.red.withOpacity(0.1),
+                ),
+                const SizedBox(height: 10),
+                const Text("SAFE System v2.0.1", style: TextStyle(color: Colors.grey, fontSize: 10)),
+              ],
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildCard({required Widget child}) {
+  Widget _buildNavItem(String id, String label, IconData icon) {
+    final bool isActive = currentScreen == id;
     return Container(
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B), // Slate 800
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[800]!),
+        borderRadius: BorderRadius.circular(8),
+        gradient: isActive ? const LinearGradient(colors: [Color(0xFFDC2626), Color(0xFFEA580C)]) : null,
       ),
-      child: child,
+      child: ListTile(
+        leading: Icon(icon, color: isActive ? Colors.white : Colors.grey),
+        title: Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.grey, fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+        onTap: () => onNavigate(id),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 }
@@ -353,8 +296,9 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
   LatLng? _currentLocation;
   List<Marker> _markers = [];
   List<CircleMarker> _circles = [];
+  String _currentScreen = "dashboard";
 
-  String myName = "Unknown";
+  String myName = "Loading..."; // Default
   String myAge = "--";
   String myGender = "--";
   String myBlood = "--";
@@ -362,6 +306,7 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
   final ValueNotifier<List<Map<String, String>>> _chatNotifier = ValueNotifier([]);
   final TextEditingController _msgController = TextEditingController();
   final MapController _mapController = MapController();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   bool _isSOSActive = false;
   bool _isScanning = false;
@@ -450,9 +395,24 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
     );
   }
 
+  void _handleNavigation(String screen) {
+    setState(() => _currentScreen = screen);
+    Navigator.pop(context);
+  }
+
+  void _handleLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (mounted) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
+    }
+  }
+
+  // --- SOS & MESH ---
   void _showEmergencyInput() {
     String selectedType = "Medical";
     String selectedSeverity = "High";
+    final TextEditingController otherCtrl = TextEditingController(); // Controller for "Other" description
 
     showDialog(
       context: context,
@@ -462,13 +422,32 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // DROPDOWN
               DropdownButton<String>(
                 value: selectedType,
                 isExpanded: true,
-                items: ["Medical", "Fire", "Trapped", "Violence"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                items: ["Medical", "Fire", "Trapped", "Violence", "Other"] // ADDED "Other"
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setDialogState(() => selectedType = v!),
               ),
-              const SizedBox(height: 10),
+
+              // CONDITIONAL TEXT FIELD FOR "OTHER"
+              if (selectedType == "Other")
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: TextField(
+                    controller: otherCtrl,
+                    decoration: const InputDecoration(
+                      labelText: "Describe Emergency",
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 15),
+
+              // SEVERITY CHIPS
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: ["Low", "High", "Critical"].map((level) {
@@ -488,7 +467,15 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
               onPressed: () {
                 Navigator.pop(context);
-                _startAdvertising(type: selectedType, severity: selectedSeverity);
+
+                // Determine final type string
+                String finalType = selectedType;
+                if (selectedType == "Other") {
+                  // Use the typed description, or default to "Other (Unspecified)"
+                  finalType = otherCtrl.text.isNotEmpty ? "Other: ${otherCtrl.text}" : "Other (Unspecified)";
+                }
+
+                _startAdvertising(type: finalType, severity: selectedSeverity);
               },
               child: const Text("BROADCAST SOS"),
             )
@@ -701,6 +688,16 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+
+      // DRAWER IMPLEMENTATION (Dynamic User Name)
+      drawer: NavDrawer(
+        currentScreen: _currentScreen,
+        onNavigate: _handleNavigation,
+        onLogout: _handleLogout,
+        userName: myName, // PASSING THE USER NAME
+      ),
+
       body: Stack(
         children: [
           FlutterMap(
@@ -716,9 +713,27 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
             ],
           ),
           Positioned(bottom: 0, left: 0, right: 0, height: 300, child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.9), Colors.transparent], stops: const [0.0, 1.0])))),
-          Positioned(top: 50, right: 20, child: FloatingActionButton(onPressed: _openChatBox, backgroundColor: Colors.white, child: const Icon(Icons.chat_bubble_outline, color: Colors.blue))),
 
-          // BOTTOM CONTROLS
+          Positioned(
+            top: 50, left: 20,
+            child: FloatingActionButton(
+              heroTag: "menu_btn",
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              backgroundColor: const Color(0xFF1E293B), // Slate 800
+              child: const Icon(Icons.menu, color: Colors.white),
+            ),
+          ),
+
+          Positioned(
+            top: 50, right: 20,
+            child: FloatingActionButton(
+              heroTag: "chat_btn",
+              onPressed: _openChatBox,
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.chat_bubble_outline, color: Colors.blue),
+            ),
+          ),
+
           Positioned(
             bottom: 30, left: 20, right: 20,
             child: Column(
@@ -748,25 +763,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
                                 ),
                                 icon: const Icon(Icons.sensors),
                                 label: const Text("VIEW ALERTS", style: TextStyle(fontWeight: FontWeight.bold))
-                            )
-                        )
-                    ),
-                    const SizedBox(width: 12),
-                    // SETTINGS BUTTON RESTORED
-                    Expanded(
-                        child: SizedBox(
-                            height: 50,
-                            child: ElevatedButton.icon(
-                                onPressed: () {
-                                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()));
-                                },
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF263238),
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
-                                ),
-                                icon: const Icon(Icons.settings_outlined),
-                                label: const Text("SETTINGS", style: TextStyle(fontWeight: FontWeight.bold))
                             )
                         )
                     ),
