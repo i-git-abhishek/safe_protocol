@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart'; // ADDED for calls
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,10 +17,9 @@ void main() async {
   ));
 }
 
-// --- ROOT WIDGET (Decides Login vs Home) ---
+// --- ROOT WIDGET ---
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
-
   @override
   State<AppRoot> createState() => _AppRootState();
 }
@@ -42,9 +42,7 @@ class _AppRootState extends State<AppRoot> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoggedIn == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (_isLoggedIn == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return _isLoggedIn! ? const SafeProtocolHome() : const LoginPage();
   }
 }
@@ -52,15 +50,14 @@ class _AppRootState extends State<AppRoot> {
 // --- LOGIN PAGE ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
-
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameCtrl = TextEditingController();
-  final TextEditingController _ageCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _ageCtrl = TextEditingController();
   String _gender = "Male";
   String _bloodGroup = "O+";
 
@@ -71,20 +68,15 @@ class _LoginPageState extends State<LoginPage> {
       await prefs.setString('userAge', _ageCtrl.text);
       await prefs.setString('userGender', _gender);
       await prefs.setString('userBlood', _bloodGroup);
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const SafeProtocolHome()),
-        );
-      }
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const SafeProtocolHome()));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Setup Profile"), backgroundColor: Colors.blue[900]),
+      backgroundColor: const Color(0xFF0F172A), // Slate 900
+      appBar: AppBar(title: const Text("Setup Profile"), backgroundColor: const Color(0xFF1E293B), foregroundColor: Colors.white),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Form(
@@ -93,27 +85,18 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               const Icon(Icons.security, size: 80, color: Colors.blue),
               const SizedBox(height: 20),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: "Full Name", border: OutlineInputBorder()),
-                validator: (v) => v!.isEmpty ? "Required" : null,
-              ),
+              _buildTextField(_nameCtrl, "Full Name"),
               const SizedBox(height: 15),
               Row(
                 children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _ageCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Age", border: OutlineInputBorder()),
-                      validator: (v) => v!.isEmpty ? "Required" : null,
-                    ),
-                  ),
+                  Expanded(child: _buildTextField(_ageCtrl, "Age", isNumber: true)),
                   const SizedBox(width: 15),
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: _gender,
-                      decoration: const InputDecoration(labelText: "Gender", border: OutlineInputBorder()),
+                      dropdownColor: const Color(0xFF1E293B),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDecoration("Gender"),
                       items: ["Male", "Female", "Other"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                       onChanged: (v) => setState(() => _gender = v!),
                     ),
@@ -123,9 +106,10 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 15),
               DropdownButtonFormField<String>(
                 value: _bloodGroup,
-                decoration: const InputDecoration(labelText: "Blood Group", border: OutlineInputBorder()),
-                items: ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                dropdownColor: const Color(0xFF1E293B),
+                style: const TextStyle(color: Colors.white),
+                decoration: _inputDecoration("Blood Group"),
+                items: ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (v) => setState(() => _bloodGroup = v!),
               ),
               const Spacer(),
@@ -134,7 +118,7 @@ class _LoginPageState extends State<LoginPage> {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _saveUser,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
                   child: const Text("SAVE & CONTINUE"),
                 ),
               )
@@ -142,6 +126,215 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       ),
+    );
+  }
+
+  TextFormField _buildTextField(TextEditingController ctrl, String label, {bool isNumber = false}) {
+    return TextFormField(
+      controller: ctrl,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(color: Colors.white),
+      decoration: _inputDecoration(label),
+      validator: (v) => v!.isEmpty ? "Required" : null,
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.grey),
+      filled: true,
+      fillColor: const Color(0xFF1E293B),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+    );
+  }
+}
+
+// --- SETTINGS PAGE (NEW) ---
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  bool _offlineMode = true;
+  bool _notifications = true;
+  String _language = "English";
+
+  final List<Map<String, String>> _contacts = [
+    {"name": "Emergency Hotline", "number": "112"},
+    {"name": "Disaster Management", "number": "108"},
+    {"name": "Medical Emergency", "number": "102"},
+  ];
+
+  void _makeCall(String number) async {
+    final Uri launchUri = Uri(scheme: 'tel', path: number);
+    if (await canLaunchUrl(launchUri)) {
+      await launchUrl(launchUri);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A), // Slate 900
+      appBar: AppBar(
+        title: const Text("SETTINGS", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+        backgroundColor: const Color(0xFF1E293B), // Slate 800
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // 1. Offline Mode Card
+          _buildCard(
+            child: SwitchListTile(
+              title: const Text("Offline Mode", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              subtitle: const Text("Peer-to-peer communication", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              secondary: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.orange[600], borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.wifi_tethering, color: Colors.white),
+              ),
+              value: _offlineMode,
+              activeColor: Colors.orange,
+              onChanged: (val) => setState(() => _offlineMode = val),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // 2. Notifications Card
+          _buildCard(
+            child: SwitchListTile(
+              title: const Text("Emergency Alerts", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              subtitle: const Text("Receive notifications", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              secondary: const Icon(Icons.notifications, color: Colors.orange),
+              value: _notifications,
+              activeColor: Colors.orange,
+              onChanged: (val) => setState(() => _notifications = val),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // 3. Emergency Contacts
+          _buildCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.phone, color: Colors.orange),
+                      SizedBox(width: 10),
+                      Text("Emergency Contacts", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                ..._contacts.map((c) => Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[800]!)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c['name']!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          const Text("Tap to call", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                        ],
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                        onPressed: () => _makeCall(c['number']!),
+                        child: Text(c['number']!),
+                      )
+                    ],
+                  ),
+                )),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // 4. Language
+          _buildCard(
+            child: ListTile(
+              leading: const Icon(Icons.language, color: Colors.orange),
+              title: const Text("Language", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              trailing: DropdownButton<String>(
+                value: _language,
+                dropdownColor: const Color(0xFF1E293B),
+                style: const TextStyle(color: Colors.white),
+                underline: Container(),
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                items: ["English", "Hindi", "Spanish", "French"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (v) => setState(() => _language = v!),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // 5. About
+          _buildCard(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.shield, color: Colors.orange),
+                      SizedBox(width: 10),
+                      Text("About SAFE", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "SAFE (Secure Alerts For Emergencies) is an offline disaster management system designed for use during natural disasters.",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 15),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8)),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.wifi_off, color: Colors.orange, size: 16),
+                        SizedBox(width: 8),
+                        Text("Peer-to-Peer (No Internet)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard({required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B), // Slate 800
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[800]!),
+      ),
+      child: child,
     );
   }
 }
@@ -161,7 +354,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
   List<Marker> _markers = [];
   List<CircleMarker> _circles = [];
 
-  // User Profile Data
   String myName = "Unknown";
   String myAge = "--";
   String myGender = "--";
@@ -258,8 +450,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
     );
   }
 
-  // --- SOS & PROFILE SHARING ---
-
   void _showEmergencyInput() {
     String selectedType = "Medical";
     String selectedSeverity = "High";
@@ -319,7 +509,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
         }
       });
 
-      // PACK PROFILE DATA INTO PAYLOAD
       var emergencyPayload = jsonEncode({
         "type": "SOS_ALERT",
         "lat": _currentLocation?.latitude ?? 0.0,
@@ -371,7 +560,7 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
             onDisconnected: (id) => setState(() => endpointMap.remove(id)),
           );
         },
-        onEndpointLost: (id) => debugPrint("Lost endpoint: $id"), // <--- FIXED HERE
+        onEndpointLost: (id) => debugPrint("Lost: $id"),
         serviceId: "com.example.safe",
       );
     } catch (e) {
@@ -412,7 +601,7 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
                 icon: Icons.notification_important,
                 color: Colors.red,
                 label: "${data['e_type']}\n${data['severity']}",
-                onTap: () => _showVictimProfile(data) // TAP TO VIEW PROFILE
+                onTap: () => _showVictimProfile(data)
             ),
           )
       );
@@ -451,7 +640,6 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
     );
   }
 
-  // --- CHAT LOGIC ---
   void _sendMessage(String message) {
     if (message.isEmpty) return;
     endpointMap.forEach((key, value) {
@@ -529,6 +717,8 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
           ),
           Positioned(bottom: 0, left: 0, right: 0, height: 300, child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.9), Colors.transparent], stops: const [0.0, 1.0])))),
           Positioned(top: 50, right: 20, child: FloatingActionButton(onPressed: _openChatBox, backgroundColor: Colors.white, child: const Icon(Icons.chat_bubble_outline, color: Colors.blue))),
+
+          // BOTTOM CONTROLS
           Positioned(
             bottom: 30, left: 20, right: 20,
             child: Column(
@@ -546,7 +736,40 @@ class _SafeProtocolHomeState extends State<SafeProtocolHome> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: SizedBox(height: 50, child: ElevatedButton.icon(onPressed: _handleViewAlerts, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), icon: const Icon(Icons.sensors), label: const Text("VIEW ALERTS", style: TextStyle(fontWeight: FontWeight.bold))))),
+                    Expanded(
+                        child: SizedBox(
+                            height: 50,
+                            child: ElevatedButton.icon(
+                                onPressed: _handleViewAlerts,
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFE65100),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                ),
+                                icon: const Icon(Icons.sensors),
+                                label: const Text("VIEW ALERTS", style: TextStyle(fontWeight: FontWeight.bold))
+                            )
+                        )
+                    ),
+                    const SizedBox(width: 12),
+                    // SETTINGS BUTTON RESTORED
+                    Expanded(
+                        child: SizedBox(
+                            height: 50,
+                            child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()));
+                                },
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF263238),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                ),
+                                icon: const Icon(Icons.settings_outlined),
+                                label: const Text("SETTINGS", style: TextStyle(fontWeight: FontWeight.bold))
+                            )
+                        )
+                    ),
                   ],
                 ),
               ],
